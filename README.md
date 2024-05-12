@@ -5,7 +5,7 @@ The `queries` library for Go implements a file based SQL query management system
 ## Installing
 
 ```
-  go get -u github.com/radim/queries
+  go get -u github.com/boringsql/queries
 ```
 
 ## Usage
@@ -71,10 +71,6 @@ The recommende use of the `queries` library is to switch from the default positi
 The benefit of the variable definition is better visual control. Other aspect is the inter-operability with other PostgreSQL tools. Notably [regresql](https://github.com/dimitri/regresql).
 
 If you prefer the default dolar sign positional parameters, you can skip the argument preparation (`queryStore.Prepare`) and use the `query.Raw`.
-
-## Notes
-
-Version 0.3.0 and later broke the interface used by previous versions.
 
 ## Credits
 

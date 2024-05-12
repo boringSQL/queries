@@ -1,3 +1,3 @@
-module github.com/radim/queries
+module github.com/boringsql/queries
 
 go 1.21
