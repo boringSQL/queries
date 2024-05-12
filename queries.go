@@ -190,6 +190,10 @@ func (q *Query) Query() string {
 	return q.OrdinalQuery
 }
 
+func (q *Query) RawQuery() string {
+	return q.Raw
+}
+
 // Prepare the arguments for the ordinal query. Missing arguments will
 // be returned as nil
 func (q *Query) Prepare(args map[string]interface{}) []interface{} {
@@ -198,10 +202,8 @@ func (q *Query) Prepare(args map[string]interface{}) []interface{} {
 		Ord  int
 	}
 
-	var components []interface{}
-
 	// number of components is query and ordinal mapping count
-	components = make([]interface{}, len(q.Mapping))
+	components := make([]interface{}, len(q.Mapping))
 	var params []kv
 	for k, v := range q.Mapping {
 		params = append(params, kv{k, v})
