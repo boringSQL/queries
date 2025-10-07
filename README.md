@@ -72,6 +72,78 @@ The benefit of the variable definition is better visual control. Other aspect is
 
 If you prefer the default dolar sign positional parameters, you can skip the argument preparation (`queryStore.Prepare`) and use the `query.Raw`.
 
+## Query Metadata
+
+You can add metadata to your queries using `-- key: value` format. Metadata provides a way to attach additional information to queries, such as descriptions, performance requirements, or custom tags.
+
+```sql
+-- name: get-user-by-email
+-- description: Retrieve user by email efficiently
+-- max-cost: 100
+-- required-nodes: Index Scan
+-- timeout: 50ms
+SELECT id, name, email
+FROM users
+WHERE email = :email
+```
+
+### Metadata Key Format
+
+- Keys must start with a letter and can contain letters, numbers, underscores, and hyphens
+- Keys are case-insensitive (automatically normalized to lowercase)
+- The `name` key is reserved for query naming and not stored as metadata
+- Values preserve their original formatting and can contain any characters
+
+### Accessing Metadata
+
+Once loaded, you can access metadata in two ways:
+
+```go
+query := queryStore.MustHaveQuery("get-user-by-email")
+
+// Direct access to the Metadata map
+description := query.Metadata["description"]
+
+// Using the GetMetadata method (case-insensitive key lookup)
+if timeout, ok := query.GetMetadata("timeout"); ok {
+    fmt.Printf("Query timeout: %s\n", timeout)
+}
+
+// Access with any case
+if cost, ok := query.GetMetadata("MAX-COST"); ok {
+    fmt.Printf("Max cost: %s\n", cost)
+}
+```
+
+### Common Use Cases
+
+Metadata can be useful for:
+
+- **Documentation**: Add descriptions and usage notes
+- **Performance monitoring**: Track expected costs, timeouts, and required query plans
+- **Query categorization**: Tag queries by feature, team, or purpose
+- **Authorization**: Store required permissions or roles
+- **Versioning**: Track query versions or migration information
+
+Example with multiple metadata fields:
+
+```sql
+-- name: complex-analytics-query
+-- description: Daily revenue calculation for reporting dashboard
+-- author: analytics-team
+-- version: 2.1
+-- tags: reporting, revenue, daily
+-- max-execution-time: 5s
+-- cache-ttl: 3600
+SELECT
+    date_trunc('day', created_at) as day,
+    sum(amount) as revenue
+FROM orders
+WHERE created_at >= :start_date
+GROUP BY day
+ORDER BY day DESC
+```
+
 ## Credits
 
 The `queries` library is heavily influenced (and in some cases re-uses part of the logic) by

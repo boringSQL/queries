@@ -8,10 +8,16 @@ import (
 	"strings"
 )
 
+type ScannedQuery struct {
+	Query    string
+	Metadata map[string]string
+}
+
 type Scanner struct {
-	line    string
-	queries map[string]string
-	current string
+	line     string
+	queries  map[string]*ScannedQuery
+	current  string
+	metadata map[string]map[string]string
 }
 
 type stateFn func(*Scanner) stateFn
@@ -25,6 +31,18 @@ func getTag(line string) string {
 	return matches[1]
 }
 
+func getMetadata(line string) (string, string, bool) {
+	re := regexp.MustCompile("^\\s*--\\s*([a-zA-Z][a-zA-Z0-9_-]*):\\s*(.+)\\s*$")
+	matches := re.FindStringSubmatch(line)
+	if matches == nil || matches[1] == "name" {
+		return "", "", false
+	}
+	// Normalize key: lowercase and trim
+	key := strings.ToLower(strings.TrimSpace(matches[1]))
+	value := strings.TrimSpace(matches[2])
+	return key, value, true
+}
+
 func initialState(s *Scanner) stateFn {
 	if tag := getTag(s.line); len(tag) > 0 {
 		s.current = tag
@@ -36,6 +54,8 @@ func initialState(s *Scanner) stateFn {
 func queryState(s *Scanner) stateFn {
 	if tag := getTag(s.line); len(tag) > 0 {
 		s.current = tag
+	} else if key, value, ok := getMetadata(s.line); ok {
+		s.appendMetadata(key, value)
 	} else {
 		s.appendQueryLine()
 	}
@@ -43,22 +63,39 @@ func queryState(s *Scanner) stateFn {
 }
 
 func (s *Scanner) appendQueryLine() {
-	current := s.queries[s.current]
 	line := strings.Trim(s.line, " \t")
 	if len(line) == 0 {
 		return
 	}
 
+	if s.queries[s.current] == nil {
+		s.queries[s.current] = &ScannedQuery{
+			Query:    "",
+			Metadata: make(map[string]string),
+		}
+	}
+
+	current := s.queries[s.current].Query
 	if len(current) > 0 {
 		current = current + "\n"
 	}
 
 	current = current + line
-	s.queries[s.current] = current
+	s.queries[s.current].Query = current
 }
 
-func (s *Scanner) Run(fileName string, io *bufio.Scanner) map[string]string {
-	s.queries = make(map[string]string)
+func (s *Scanner) appendMetadata(key, value string) {
+	if s.queries[s.current] == nil {
+		s.queries[s.current] = &ScannedQuery{
+			Query:    "",
+			Metadata: make(map[string]string),
+		}
+	}
+	s.queries[s.current].Metadata[key] = value
+}
+
+func (s *Scanner) Run(fileName string, io *bufio.Scanner) map[string]*ScannedQuery {
+	s.queries = make(map[string]*ScannedQuery)
 
 	s.current = filepath.Base(strings.TrimSuffix(fileName, filepath.Ext(fileName)))
 

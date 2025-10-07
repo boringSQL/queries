@@ -33,6 +33,7 @@ type (
 		OrdinalQuery string
 		Mapping      map[string]int
 		NamedArgs    []sql.NamedArg
+		Metadata     map[string]string
 	}
 )
 
@@ -127,13 +128,13 @@ func (s *QueryStore) loadQueriesFromFile(fileName string, r io.Reader) error {
 	scanner := &Scanner{}
 	newQueries := scanner.Run(fileName, bufio.NewScanner(r))
 
-	for name, query := range newQueries {
+	for name, scannedQuery := range newQueries {
 		// insert query (but check whatever it already exists)
 		if _, ok := s.queries[name]; ok {
 			return fmt.Errorf("Query '%s' already exists", name)
 		}
 
-		q := NewQuery(name, query)
+		q := NewQuery(name, scannedQuery.Query, scannedQuery.Metadata)
 
 		s.queries[name] = q
 	}
@@ -141,14 +142,19 @@ func (s *QueryStore) loadQueriesFromFile(fileName string, r io.Reader) error {
 	return nil
 }
 
-func NewQuery(name, query string) *Query {
+func NewQuery(name, query string, metadata map[string]string) *Query {
 	var (
 		position int = 1
 	)
 
+	if metadata == nil {
+		metadata = make(map[string]string)
+	}
+
 	q := Query{
-		Name: name,
-		Raw:  query,
+		Name:     name,
+		Raw:      query,
+		Metadata: metadata,
 	}
 
 	// TODO: should drop
@@ -192,6 +198,14 @@ func (q *Query) Query() string {
 
 func (q *Query) RawQuery() string {
 	return q.Raw
+}
+
+// GetMetadata retrieves a metadata value by key
+func (q *Query) GetMetadata(key string) (string, bool) {
+	// Normalize the key to lowercase for consistent lookup
+	key = strings.ToLower(strings.TrimSpace(key))
+	value, ok := q.Metadata[key]
+	return value, ok
 }
 
 // Prepare the arguments for the ordinal query. Missing arguments will
