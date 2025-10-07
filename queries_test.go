@@ -1,8 +1,10 @@
 package queries
 
 import (
+	"bufio"
 	"database/sql"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -69,6 +71,61 @@ func TestNewQuery(t *testing.T) {
 			}
 			if !reflect.DeepEqual(q.NamedArgs, tc.expectedSQL) {
 				t.Errorf("Mapping: got %v, expected %v", q.NamedArgs, tc.expectedSQL)
+			}
+		})
+	}
+}
+
+func TestScannerUsesFilenameAsQueryName(t *testing.T) {
+	testCases := []struct {
+		name             string
+		fileName         string
+		content          string
+		expectedQueryName string
+		expectedQuery    string
+	}{
+		{
+			name:             "File without name directive uses filename",
+			fileName:         "my_test_query.sql",
+			content:          "SELECT * FROM users WHERE id = :user_id",
+			expectedQueryName: "my_test_query",
+			expectedQuery:    "SELECT * FROM users WHERE id = :user_id",
+		},
+		{
+			name:             "File with name directive uses directive name",
+			fileName:         "my_test_query.sql",
+			content:          "-- name: other-name\nSELECT * FROM users WHERE id = :user_id",
+			expectedQueryName: "other-name",
+			expectedQuery:    "SELECT * FROM users WHERE id = :user_id",
+		},
+		{
+			name:             "File with path uses basename",
+			fileName:         "sql/queries/get_user.sql",
+			content:          "SELECT * FROM users",
+			expectedQueryName: "get_user",
+			expectedQuery:    "SELECT * FROM users",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			scanner := &Scanner{}
+			reader := strings.NewReader(tc.content)
+			bufScanner := bufio.NewScanner(reader)
+
+			queries := scanner.Run(tc.fileName, bufScanner)
+
+			if len(queries) != 1 {
+				t.Errorf("Expected 1 query, got %d", len(queries))
+			}
+
+			query, ok := queries[tc.expectedQueryName]
+			if !ok {
+				t.Errorf("Query '%s' not found. Available queries: %v", tc.expectedQueryName, queries)
+			}
+
+			if query != tc.expectedQuery {
+				t.Errorf("Query content: got %s, expected %s", query, tc.expectedQuery)
 			}
 		})
 	}
