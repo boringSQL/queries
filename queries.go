@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	psqlVarRE = `[^:]:['"]?([A-Za-z][A-Za-z0-9_]*)['"]?`
+	psqlVarRE        = `[^:]:['"]?([A-Za-z][A-Za-z0-9_]*)['"]?`
+	positionalParamRE = `\$(\d+)`
 )
 
 var (
@@ -165,10 +166,6 @@ func (s *QueryStore) loadQueriesFromFile(fileName string, r io.Reader) error {
 }
 
 func NewQuery(name, path, query string, metadata map[string]string) *Query {
-	var (
-		position int = 1
-	)
-
 	if metadata == nil {
 		metadata = make(map[string]string)
 	}
@@ -180,7 +177,55 @@ func NewQuery(name, path, query string, metadata map[string]string) *Query {
 		Metadata: metadata,
 	}
 
-	// TODO: should drop
+	// Check if query uses positional parameters ($1, $2, etc.)
+	positionalRE, _ := regexp.Compile(positionalParamRE)
+	positionalMatches := positionalRE.FindAllStringSubmatch(query, -1)
+
+	if len(positionalMatches) > 0 {
+		// Handle $1 style parameters
+		return handlePositionalParams(&q, name, query, positionalMatches)
+	}
+
+	// Handle :name style parameters (existing logic)
+	return handleNamedParams(&q, name, query)
+}
+
+func handlePositionalParams(q *Query, name, query string, matches [][]string) *Query {
+	// Find the highest parameter number
+	maxParam := 0
+
+	for _, match := range matches {
+		num := 0
+		fmt.Sscanf(match[1], "%d", &num)
+		if num > maxParam {
+			maxParam = num
+		}
+	}
+
+	// Create synthetic names and populate Args/NamedArgs
+	mapping := make(map[string]int)
+	namedArgs := []sql.NamedArg{}
+	args := []string{}
+
+	// Create args for each positional parameter in order
+	for i := 1; i <= maxParam; i++ {
+		syntheticName := fmt.Sprintf("arg%d", i)
+		args = append(args, syntheticName)
+		mapping[syntheticName] = i
+		namedArgs = append(namedArgs, sql.Named(syntheticName, nil))
+	}
+
+	q.OrdinalQuery = fmt.Sprintf("-- name: %s\n%s", name, query)
+	q.Mapping = mapping
+	q.Args = args
+	q.NamedArgs = namedArgs
+
+	return q
+}
+
+func handleNamedParams(q *Query, name, query string) *Query {
+	var position int = 1
+
 	mapping := make(map[string]int)
 	namedArgs := []sql.NamedArg{}
 	args := []string{}
@@ -216,7 +261,7 @@ func NewQuery(name, path, query string, metadata map[string]string) *Query {
 	q.Args = args
 	q.NamedArgs = namedArgs
 
-	return &q
+	return q
 }
 
 // Query returns ordinal query

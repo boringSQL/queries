@@ -395,3 +395,93 @@ func TestArgs(t *testing.T) {
 		})
 	}
 }
+
+func TestPositionalParameters(t *testing.T) {
+	testCases := []struct {
+		name         string
+		inputQuery   string
+		expectedRaw  string
+		expectedOrd  string
+		expectedArgs []string
+		expectedSQL  []sql.NamedArg
+	}{
+		{
+			name:        "Single positional parameter",
+			inputQuery:  "SELECT * FROM users WHERE id = $1",
+			expectedRaw: "SELECT * FROM users WHERE id = $1",
+			expectedOrd: "-- name: Single positional parameter\nSELECT * FROM users WHERE id = $1",
+			expectedArgs: []string{"arg1"},
+			expectedSQL: []sql.NamedArg{
+				sql.Named("arg1", nil),
+			},
+		},
+		{
+			name:        "Multiple positional parameters",
+			inputQuery:  "SELECT * FROM users WHERE id = $1 AND name = $2 AND age = $3",
+			expectedRaw: "SELECT * FROM users WHERE id = $1 AND name = $2 AND age = $3",
+			expectedOrd: "-- name: Multiple positional parameters\nSELECT * FROM users WHERE id = $1 AND name = $2 AND age = $3",
+			expectedArgs: []string{"arg1", "arg2", "arg3"},
+			expectedSQL: []sql.NamedArg{
+				sql.Named("arg1", nil),
+				sql.Named("arg2", nil),
+				sql.Named("arg3", nil),
+			},
+		},
+		{
+			name:        "Positional parameters with duplicates",
+			inputQuery:  "SELECT * FROM users WHERE id = $1 OR backup_id = $1 AND status = $2",
+			expectedRaw: "SELECT * FROM users WHERE id = $1 OR backup_id = $1 AND status = $2",
+			expectedOrd: "-- name: Positional parameters with duplicates\nSELECT * FROM users WHERE id = $1 OR backup_id = $1 AND status = $2",
+			expectedArgs: []string{"arg1", "arg2"},
+			expectedSQL: []sql.NamedArg{
+				sql.Named("arg1", nil),
+				sql.Named("arg2", nil),
+			},
+		},
+		{
+			name:        "Positional parameters in INSERT",
+			inputQuery:  "INSERT INTO users (name, email, age) VALUES ($1, $2, $3)",
+			expectedRaw: "INSERT INTO users (name, email, age) VALUES ($1, $2, $3)",
+			expectedOrd: "-- name: Positional parameters in INSERT\nINSERT INTO users (name, email, age) VALUES ($1, $2, $3)",
+			expectedArgs: []string{"arg1", "arg2", "arg3"},
+			expectedSQL: []sql.NamedArg{
+				sql.Named("arg1", nil),
+				sql.Named("arg2", nil),
+				sql.Named("arg3", nil),
+			},
+		},
+		{
+			name:        "Non-sequential positional parameters",
+			inputQuery:  "SELECT * FROM users WHERE id = $2 AND name = $1",
+			expectedRaw: "SELECT * FROM users WHERE id = $2 AND name = $1",
+			expectedOrd: "-- name: Non-sequential positional parameters\nSELECT * FROM users WHERE id = $2 AND name = $1",
+			expectedArgs: []string{"arg1", "arg2"},
+			expectedSQL: []sql.NamedArg{
+				sql.Named("arg1", nil),
+				sql.Named("arg2", nil),
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			q := NewQuery(tc.name, "test.sql", tc.inputQuery, nil)
+
+			if q.Raw != tc.expectedRaw {
+				t.Errorf("Raw: got %s, expected %s", q.Raw, tc.expectedRaw)
+			}
+
+			if q.OrdinalQuery != tc.expectedOrd {
+				t.Errorf("OrdinalQuery: got %s, expected %s", q.OrdinalQuery, tc.expectedOrd)
+			}
+
+			if !reflect.DeepEqual(q.Args, tc.expectedArgs) {
+				t.Errorf("Args: got %v, expected %v", q.Args, tc.expectedArgs)
+			}
+
+			if !reflect.DeepEqual(q.NamedArgs, tc.expectedSQL) {
+				t.Errorf("NamedArgs: got %v, expected %v", q.NamedArgs, tc.expectedSQL)
+			}
+		})
+	}
+}

@@ -68,7 +68,7 @@ if err != nil {
 
 The recommended use of the `queries` library is to switch from the default positional parameter notation ($1, $2, etc. - dollar quited sign followed by the parameter position) to [psql variable definition](https://www.postgresql.org/docs/current/app-psql.html#APP-PSQL-VARIABLES).
 
-The benefit of the variable definition is better visual control. Other aspect is the inter-operability with other PostgreSQL tools. Notably [regresql](https://github.com/dimitri/regresql).
+The benefit of the variable definition is better visual control. Other aspect is the inter-operability with other PostgreSQL tools. Notably [regresql](https://github.com/boringSQL/regresql).
 
 If you prefer the default dolar sign positional parameters, you can skip the argument preparation (`queryStore.Prepare`) and use the `query.Raw`.
 
