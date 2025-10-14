@@ -29,9 +29,11 @@ type (
 
 	Query struct {
 		Name         string
+		Path         string
 		Raw          string
 		OrdinalQuery string
 		Mapping      map[string]int
+		Args         []string
 		NamedArgs    []sql.NamedArg
 		Metadata     map[string]string
 	}
@@ -154,7 +156,7 @@ func (s *QueryStore) loadQueriesFromFile(fileName string, r io.Reader) error {
 			return fmt.Errorf("Query '%s' already exists", name)
 		}
 
-		q := NewQuery(name, scannedQuery.Query, scannedQuery.Metadata)
+		q := NewQuery(name, fileName, scannedQuery.Query, scannedQuery.Metadata)
 
 		s.queries[name] = q
 	}
@@ -162,7 +164,7 @@ func (s *QueryStore) loadQueriesFromFile(fileName string, r io.Reader) error {
 	return nil
 }
 
-func NewQuery(name, query string, metadata map[string]string) *Query {
+func NewQuery(name, path, query string, metadata map[string]string) *Query {
 	var (
 		position int = 1
 	)
@@ -173,6 +175,7 @@ func NewQuery(name, query string, metadata map[string]string) *Query {
 
 	q := Query{
 		Name:     name,
+		Path:     path,
 		Raw:      query,
 		Metadata: metadata,
 	}
@@ -180,6 +183,7 @@ func NewQuery(name, query string, metadata map[string]string) *Query {
 	// TODO: should drop
 	mapping := make(map[string]int)
 	namedArgs := []sql.NamedArg{}
+	args := []string{}
 
 	r, _ := regexp.Compile(psqlVarRE)
 	matches := r.FindAllStringSubmatch(query, -1)
@@ -190,6 +194,9 @@ func NewQuery(name, query string, metadata map[string]string) *Query {
 		if isReservedName(variable) {
 			continue
 		}
+
+		// Collect all variable occurrences (including duplicates)
+		args = append(args, variable)
 
 		if _, ok := mapping[variable]; !ok {
 			mapping[variable] = position
@@ -206,6 +213,7 @@ func NewQuery(name, query string, metadata map[string]string) *Query {
 
 	q.OrdinalQuery = fmt.Sprintf("-- name: %s\n%s", name, query)
 	q.Mapping = mapping
+	q.Args = args
 	q.NamedArgs = namedArgs
 
 	return &q

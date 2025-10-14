@@ -66,7 +66,7 @@ if err != nil {
 
 ## Query format
 
-The recommende use of the `queries` library is to switch from the default positional parameter notation ($1, $2, etc. - dollar quited sign followed by the parameter position) to [psql variable definition](https://www.postgresql.org/docs/current/app-psql.html#APP-PSQL-VARIABLES).
+The recommended use of the `queries` library is to switch from the default positional parameter notation ($1, $2, etc. - dollar quited sign followed by the parameter position) to [psql variable definition](https://www.postgresql.org/docs/current/app-psql.html#APP-PSQL-VARIABLES).
 
 The benefit of the variable definition is better visual control. Other aspect is the inter-operability with other PostgreSQL tools. Notably [regresql](https://github.com/dimitri/regresql).
 

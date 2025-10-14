@@ -62,7 +62,7 @@ func TestNewQuery(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			q := NewQuery(tc.name, tc.inputQuery, nil)
+			q := NewQuery(tc.name, "test.sql", tc.inputQuery, nil)
 			if q.Raw != tc.expectedRaw {
 				t.Errorf("Raw: got %s, expected %s", q.Raw, tc.expectedRaw)
 			}
@@ -222,7 +222,7 @@ func TestQueryMetadataAccess(t *testing.T) {
 		"timeout":     "50ms",
 	}
 
-	q := NewQuery("test-query", "SELECT 1", metadata)
+	q := NewQuery("test-query", "test.sql", "SELECT 1", metadata)
 
 	// Test direct access to Metadata field
 	if q.Metadata["description"] != "Test query" {
@@ -245,7 +245,7 @@ func TestQueryMetadataAccess(t *testing.T) {
 	}
 
 	// Test query with nil metadata
-	q2 := NewQuery("test2", "SELECT 2", nil)
+	q2 := NewQuery("test2", "test2.sql", "SELECT 2", nil)
 	if q2.Metadata == nil {
 		t.Error("NewQuery should initialize empty metadata map, not nil")
 	}
@@ -272,7 +272,7 @@ func TestQueryStoreIteration(t *testing.T) {
 	}
 
 	for name, query := range queries {
-		q := NewQuery(name, query, nil)
+		q := NewQuery(name, "test.sql", query, nil)
 		store.queries[name] = q
 	}
 
@@ -302,9 +302,96 @@ func TestQueryStoreIteration(t *testing.T) {
 	}
 
 	// Test that Queries returns a copy (modifying it shouldn't affect the store)
-	allQueries["new-query"] = NewQuery("new-query", "SELECT 1", nil)
+	allQueries["new-query"] = NewQuery("new-query", "new.sql", "SELECT 1", nil)
 
 	if _, err := store.Query("new-query"); err == nil {
 		t.Error("Modifying Queries() result should not affect the original store")
+	}
+}
+
+func TestQueryPath(t *testing.T) {
+	testCases := []struct {
+		name         string
+		queryName    string
+		path         string
+		query        string
+		expectedPath string
+	}{
+		{
+			name:         "Simple path",
+			queryName:    "get-user",
+			path:         "sql/users.sql",
+			query:        "SELECT * FROM users WHERE id = :id",
+			expectedPath: "sql/users.sql",
+		},
+		{
+			name:         "Full path",
+			queryName:    "create-user",
+			path:         "/app/sql/queries/users/create.sql",
+			query:        "INSERT INTO users (name) VALUES (:name)",
+			expectedPath: "/app/sql/queries/users/create.sql",
+		},
+		{
+			name:         "Relative path",
+			queryName:    "test-query",
+			path:         "test.sql",
+			query:        "SELECT 1",
+			expectedPath: "test.sql",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			q := NewQuery(tc.queryName, tc.path, tc.query, nil)
+
+			if q.Path != tc.expectedPath {
+				t.Errorf("Path mismatch: got %s, expected %s", q.Path, tc.expectedPath)
+			}
+		})
+	}
+}
+
+func TestArgs(t *testing.T) {
+	testCases := []struct {
+		name         string
+		query        string
+		expectedArgs []string
+	}{
+		{
+			name:         "Arguments with duplicates",
+			query:        "SELECT * FROM users WHERE id = :a AND name = :a AND age = :b",
+			expectedArgs: []string{"a", "a", "b"},
+		},
+		{
+			name:         "No arguments",
+			query:        "SELECT * FROM users",
+			expectedArgs: []string{},
+		},
+		{
+			name:         "Single argument",
+			query:        "SELECT * FROM users WHERE id = :id",
+			expectedArgs: []string{"id"},
+		},
+		{
+			name:         "Multiple unique arguments",
+			query:        "SELECT * FROM users WHERE id = :id AND name = :name AND age = :age",
+			expectedArgs: []string{"id", "name", "age"},
+		},
+		{
+			name:         "Multiple duplicates",
+			query:        "SELECT * FROM users WHERE :x = :x OR :y = :y OR :x = :z",
+			expectedArgs: []string{"x", "x", "y", "y", "x", "z"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			q := NewQuery(tc.name, "test.sql", tc.query, nil)
+			args := q.Args
+
+			if !reflect.DeepEqual(args, tc.expectedArgs) {
+				t.Errorf("Args mismatch:\ngot:  %v\nwant: %v", args, tc.expectedArgs)
+			}
+		})
 	}
 }
