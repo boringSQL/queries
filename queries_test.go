@@ -250,3 +250,61 @@ func TestQueryMetadataAccess(t *testing.T) {
 		t.Error("NewQuery should initialize empty metadata map, not nil")
 	}
 }
+
+func TestQueryStoreIteration(t *testing.T) {
+	store := NewQueryStore()
+
+	// Test empty store
+	if len(store.QueryNames()) != 0 {
+		t.Errorf("Expected empty query names, got %d items", len(store.QueryNames()))
+	}
+
+	if len(store.Queries()) != 0 {
+		t.Errorf("Expected empty queries map, got %d items", len(store.Queries()))
+	}
+
+	// Add some queries
+	queries := map[string]string{
+		"get-user":    "SELECT * FROM users WHERE id = :id",
+		"create-user": "INSERT INTO users (name) VALUES (:name)",
+		"delete-user": "DELETE FROM users WHERE id = :id",
+		"list-users":  "SELECT * FROM users ORDER BY name",
+	}
+
+	for name, query := range queries {
+		q := NewQuery(name, query, nil)
+		store.queries[name] = q
+	}
+
+	// Test QueryNames returns all names sorted
+	names := store.QueryNames()
+	expectedNames := []string{"create-user", "delete-user", "get-user", "list-users"}
+
+	if len(names) != len(expectedNames) {
+		t.Errorf("Expected %d query names, got %d", len(expectedNames), len(names))
+	}
+
+	if !reflect.DeepEqual(names, expectedNames) {
+		t.Errorf("QueryNames returned incorrect names:\ngot:  %v\nwant: %v", names, expectedNames)
+	}
+
+	// Test Queries returns all queries
+	allQueries := store.Queries()
+
+	if len(allQueries) != len(queries) {
+		t.Errorf("Expected %d queries, got %d", len(queries), len(allQueries))
+	}
+
+	for name := range queries {
+		if _, ok := allQueries[name]; !ok {
+			t.Errorf("Query '%s' not found in Queries() result", name)
+		}
+	}
+
+	// Test that Queries returns a copy (modifying it shouldn't affect the store)
+	allQueries["new-query"] = NewQuery("new-query", "SELECT 1", nil)
+
+	if _, err := store.Query("new-query"); err == nil {
+		t.Error("Modifying Queries() result should not affect the original store")
+	}
+}

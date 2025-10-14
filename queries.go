@@ -124,6 +124,26 @@ func (s *QueryStore) Query(name string) (*Query, error) {
 	return query, nil
 }
 
+// QueryNames returns a sorted list of all query names in the store
+func (s *QueryStore) QueryNames() []string {
+	names := make([]string, 0, len(s.queries))
+	for name := range s.queries {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// Queries returns all queries in the store as a map
+func (s *QueryStore) Queries() map[string]*Query {
+	// Return a copy to prevent external modification
+	queriesCopy := make(map[string]*Query, len(s.queries))
+	for name, query := range s.queries {
+		queriesCopy[name] = query
+	}
+	return queriesCopy
+}
+
 func (s *QueryStore) loadQueriesFromFile(fileName string, r io.Reader) error {
 	scanner := &Scanner{}
 	newQueries := scanner.Run(fileName, bufio.NewScanner(r))
