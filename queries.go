@@ -165,6 +165,23 @@ func (s *QueryStore) loadQueriesFromFile(fileName string, r io.Reader) error {
 	return nil
 }
 
+// stripSQLComments removes SQL single-line comments (--) from a query string.
+// It returns a copy of the query with all comment content removed, while
+// preserving the structure and line breaks of the original query.
+func stripSQLComments(query string) string {
+	lines := strings.Split(query, "\n")
+	result := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		if idx := strings.Index(line, "--"); idx >= 0 {
+			line = line[:idx]
+		}
+		result = append(result, line)
+	}
+
+	return strings.Join(result, "\n")
+}
+
 func NewQuery(name, path, query string, metadata map[string]string) *Query {
 	if metadata == nil {
 		metadata = make(map[string]string)
@@ -177,20 +194,22 @@ func NewQuery(name, path, query string, metadata map[string]string) *Query {
 		Metadata: metadata,
 	}
 
-	// Check if query uses positional parameters ($1, $2, etc.)
+	// Strip comments to avoid detecting parameters within comment text
+	cleanQuery := stripSQLComments(query)
+
+	// Detect positional parameters ($1, $2, etc.)
 	positionalRE, _ := regexp.Compile(positionalParamRE)
-	positionalMatches := positionalRE.FindAllStringSubmatch(query, -1)
+	positionalMatches := positionalRE.FindAllStringSubmatch(cleanQuery, -1)
 
 	if len(positionalMatches) > 0 {
-		// Handle $1 style parameters
-		return handlePositionalParams(&q, name, query, positionalMatches)
+		return handlePositionalParams(&q, name, query, cleanQuery, positionalMatches)
 	}
 
-	// Handle :name style parameters (existing logic)
-	return handleNamedParams(&q, name, query)
+	// Detect named parameters (:name, :value, etc.)
+	return handleNamedParams(&q, name, query, cleanQuery)
 }
 
-func handlePositionalParams(q *Query, name, query string, matches [][]string) *Query {
+func handlePositionalParams(q *Query, name, query, cleanQuery string, matches [][]string) *Query {
 	// Find the highest parameter number
 	maxParam := 0
 
@@ -223,7 +242,7 @@ func handlePositionalParams(q *Query, name, query string, matches [][]string) *Q
 	return q
 }
 
-func handleNamedParams(q *Query, name, query string) *Query {
+func handleNamedParams(q *Query, name, query, cleanQuery string) *Query {
 	var position int = 1
 
 	mapping := make(map[string]int)
@@ -231,7 +250,7 @@ func handleNamedParams(q *Query, name, query string) *Query {
 	args := []string{}
 
 	r, _ := regexp.Compile(psqlVarRE)
-	matches := r.FindAllStringSubmatch(query, -1)
+	matches := r.FindAllStringSubmatch(cleanQuery, -1)
 
 	for _, match := range matches {
 		variable := match[1]
@@ -250,7 +269,7 @@ func handleNamedParams(q *Query, name, query string) *Query {
 		}
 	}
 
-	// replace the variable with ordinal markers
+	// Replace named parameters with positional markers ($1, $2, etc.)
 	for name, ord := range mapping {
 		r, _ := regexp.Compile(fmt.Sprintf(`:["']?%s["']?`, name))
 		query = r.ReplaceAllLiteralString(query, fmt.Sprintf("$%d", ord))
