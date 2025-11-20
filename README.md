@@ -72,6 +72,28 @@ The benefit of the variable definition is better visual control. Other aspect is
 
 If you prefer the default dolar sign positional parameters, you can skip the argument preparation (`queryStore.Prepare`) and use the `query.Raw`.
 
+## Parsing and Comments
+
+Queries are identified by `-- name:` directives. Comments before the directive are skipped. If no name is specified, the file name is used.
+
+```sql
+-- This comment is skipped
+-- name: get-users
+SELECT * FROM users WHERE id = :id
+```
+
+Multiple queries can be defined in a single file by using multiple `-- name:` directives.
+
+Parameters (`:param` or `$1`) are detected from SQL code only. Parameters in comments are ignored.
+
+```sql
+-- name: example
+-- :fake_param in comments is ignored
+SELECT * FROM users WHERE id = :real_param  -- :another_fake is also ignored
+```
+
+Named parameters are converted to positional notation: `:name` becomes `$1`, `:email` becomes `$2`, etc.
+
 ## Query Metadata
 
 You can add metadata to your queries using `-- key: value` format. Metadata provides a way to attach additional information to queries, such as descriptions, performance requirements, or custom tags.

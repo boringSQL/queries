@@ -44,11 +44,21 @@ func getMetadata(line string) (string, string, bool) {
 }
 
 func initialState(s *Scanner) stateFn {
+	// Check for name directive
 	if tag := getTag(s.line); len(tag) > 0 {
 		s.current = tag
 		return queryState
 	}
-	return initialState
+
+	// Skip empty lines and comment lines (including metadata) before first name directive
+	trimmed := strings.TrimSpace(s.line)
+	if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+		return initialState
+	}
+
+	// Found actual SQL code, use filename as query name and process this line
+	s.appendQueryLine()
+	return queryState
 }
 
 func queryState(s *Scanner) stateFn {
@@ -99,7 +109,7 @@ func (s *Scanner) Run(fileName string, io *bufio.Scanner) map[string]*ScannedQue
 
 	s.current = filepath.Base(strings.TrimSuffix(fileName, filepath.Ext(fileName)))
 
-	for state := queryState; io.Scan(); {
+	for state := initialState; io.Scan(); {
 		s.line = io.Text()
 		state = state(s)
 	}
