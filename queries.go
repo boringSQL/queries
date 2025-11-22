@@ -15,8 +15,10 @@ import (
 )
 
 const (
-	psqlVarRE        = `[^:]:['"]?([A-Za-z][A-Za-z0-9_]*)['"]?`
 	positionalParamRE = `\$(\d+)`
+	colonParamRE      = `[^:]:['"]?([A-Za-z][A-Za-z0-9_]*)['"]?`
+	atSignParamRE     = `[^@]@['"]?([A-Za-z][A-Za-z0-9_]*)['"]?`
+	namedParamRE      = `[:@]["']?%s["']?` // Template for replacement
 )
 
 var (
@@ -157,7 +159,10 @@ func (s *QueryStore) loadQueriesFromFile(fileName string, r io.Reader) error {
 			return fmt.Errorf("Query '%s' already exists", name)
 		}
 
-		q := NewQuery(name, fileName, scannedQuery.Query, scannedQuery.Metadata)
+		q, err := NewQuery(name, fileName, scannedQuery.Query, scannedQuery.Metadata)
+		if err != nil {
+			return fmt.Errorf("Error creating query '%s': %w", name, err)
+		}
 
 		s.queries[name] = q
 	}
@@ -182,7 +187,7 @@ func stripSQLComments(query string) string {
 	return strings.Join(result, "\n")
 }
 
-func NewQuery(name, path, query string, metadata map[string]string) *Query {
+func NewQuery(name, path, query string, metadata map[string]string) (*Query, error) {
 	if metadata == nil {
 		metadata = make(map[string]string)
 	}
@@ -197,16 +202,54 @@ func NewQuery(name, path, query string, metadata map[string]string) *Query {
 	// Strip comments to avoid detecting parameters within comment text
 	cleanQuery := stripSQLComments(query)
 
-	// Detect positional parameters ($1, $2, etc.)
-	positionalRE, _ := regexp.Compile(positionalParamRE)
-	positionalMatches := positionalRE.FindAllStringSubmatch(cleanQuery, -1)
+	// Detect all parameter types
+	positionalMatches := regexp.MustCompile(positionalParamRE).FindAllStringSubmatch(cleanQuery, -1)
+	colonMatches := filterReservedNames(regexp.MustCompile(colonParamRE).FindAllStringSubmatch(cleanQuery, -1))
+	atSignMatches := filterReservedNames(regexp.MustCompile(atSignParamRE).FindAllStringSubmatch(cleanQuery, -1))
 
-	if len(positionalMatches) > 0 {
-		return handlePositionalParams(&q, name, query, cleanQuery, positionalMatches)
+	// Validate that only one parameter style is used
+	if err := validateSingleParameterStyle(name, positionalMatches, colonMatches, atSignMatches); err != nil {
+		return nil, err
 	}
 
-	// Detect named parameters (:name, :value, etc.)
-	return handleNamedParams(&q, name, query, cleanQuery)
+	// Process based on detected parameter type
+	if len(positionalMatches) > 0 {
+		return handlePositionalParams(&q, name, query, cleanQuery, positionalMatches), nil
+	}
+
+	// Handle named parameters (colon or at-sign style)
+	return handleNamedParams(&q, name, query, cleanQuery), nil
+}
+
+func filterReservedNames(matches [][]string) [][]string {
+	filtered := make([][]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) > 1 && !isReservedName(match[1]) {
+			filtered = append(filtered, match)
+		}
+	}
+	return filtered
+}
+
+func validateSingleParameterStyle(queryName string, positional, colon, atSign [][]string) error {
+	styles := []string{}
+
+	if len(positional) > 0 {
+		styles = append(styles, "positional ($1, $2, ...)")
+	}
+	if len(colon) > 0 {
+		styles = append(styles, "colon (:param)")
+	}
+	if len(atSign) > 0 {
+		styles = append(styles, "at-sign (@param)")
+	}
+
+	if len(styles) > 1 {
+		return fmt.Errorf("mixed parameter styles detected in query '%s': found %s. Use only one style per query",
+			queryName, strings.Join(styles, " and "))
+	}
+
+	return nil
 }
 
 func handlePositionalParams(q *Query, name, query, cleanQuery string, matches [][]string) *Query {
@@ -243,18 +286,24 @@ func handlePositionalParams(q *Query, name, query, cleanQuery string, matches []
 }
 
 func handleNamedParams(q *Query, name, query, cleanQuery string) *Query {
-	var position int = 1
-
 	mapping := make(map[string]int)
 	namedArgs := []sql.NamedArg{}
 	args := []string{}
+	position := 1
 
-	r, _ := regexp.Compile(psqlVarRE)
-	matches := r.FindAllStringSubmatch(cleanQuery, -1)
+	// Match both colon and at-sign parameters
+	colonMatches := regexp.MustCompile(colonParamRE).FindAllStringSubmatch(cleanQuery, -1)
+	atSignMatches := regexp.MustCompile(atSignParamRE).FindAllStringSubmatch(cleanQuery, -1)
 
-	for _, match := range matches {
+	// Combine matches (only one type will have results due to validation)
+	allMatches := append(colonMatches, atSignMatches...)
+
+	for _, match := range allMatches {
+		if len(match) < 2 {
+			continue
+		}
+
 		variable := match[1]
-
 		if isReservedName(variable) {
 			continue
 		}
@@ -270,9 +319,9 @@ func handleNamedParams(q *Query, name, query, cleanQuery string) *Query {
 	}
 
 	// Replace named parameters with positional markers ($1, $2, etc.)
-	for name, ord := range mapping {
-		r, _ := regexp.Compile(fmt.Sprintf(`:["']?%s["']?`, name))
-		query = r.ReplaceAllLiteralString(query, fmt.Sprintf("$%d", ord))
+	for paramName, ord := range mapping {
+		pattern := regexp.MustCompile(fmt.Sprintf(namedParamRE, paramName))
+		query = pattern.ReplaceAllLiteralString(query, fmt.Sprintf("$%d", ord))
 	}
 
 	q.OrdinalQuery = fmt.Sprintf("-- name: %s\n%s", name, query)

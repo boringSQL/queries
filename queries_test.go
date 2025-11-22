@@ -62,7 +62,10 @@ func TestNewQuery(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			q := NewQuery(tc.name, "test.sql", tc.inputQuery, nil)
+			q, err := NewQuery(tc.name, "test.sql", tc.inputQuery, nil)
+			if err != nil {
+				t.Fatalf("NewQuery() error: %v", err)
+			}
 			if q.Raw != tc.expectedRaw {
 				t.Errorf("Raw: got %s, expected %s", q.Raw, tc.expectedRaw)
 			}
@@ -222,7 +225,10 @@ func TestQueryMetadataAccess(t *testing.T) {
 		"timeout":     "50ms",
 	}
 
-	q := NewQuery("test-query", "test.sql", "SELECT 1", metadata)
+	q, err := NewQuery("test-query", "test.sql", "SELECT 1", metadata)
+	if err != nil {
+		t.Fatalf("NewQuery() error: %v", err)
+	}
 
 	// Test direct access to Metadata field
 	if q.Metadata["description"] != "Test query" {
@@ -245,7 +251,10 @@ func TestQueryMetadataAccess(t *testing.T) {
 	}
 
 	// Test query with nil metadata
-	q2 := NewQuery("test2", "test2.sql", "SELECT 2", nil)
+	q2, err := NewQuery("test2", "test2.sql", "SELECT 2", nil)
+	if err != nil {
+		t.Fatalf("NewQuery() error: %v", err)
+	}
 	if q2.Metadata == nil {
 		t.Error("NewQuery should initialize empty metadata map, not nil")
 	}
@@ -272,7 +281,10 @@ func TestQueryStoreIteration(t *testing.T) {
 	}
 
 	for name, query := range queries {
-		q := NewQuery(name, "test.sql", query, nil)
+		q, err := NewQuery(name, "test.sql", query, nil)
+		if err != nil {
+			t.Fatalf("NewQuery() error: %v", err)
+		}
 		store.queries[name] = q
 	}
 
@@ -302,7 +314,8 @@ func TestQueryStoreIteration(t *testing.T) {
 	}
 
 	// Test that Queries returns a copy (modifying it shouldn't affect the store)
-	allQueries["new-query"] = NewQuery("new-query", "new.sql", "SELECT 1", nil)
+	newQ, _ := NewQuery("new-query", "new.sql", "SELECT 1", nil)
+		allQueries["new-query"] = newQ
 
 	if _, err := store.Query("new-query"); err == nil {
 		t.Error("Modifying Queries() result should not affect the original store")
@@ -342,7 +355,10 @@ func TestQueryPath(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			q := NewQuery(tc.queryName, tc.path, tc.query, nil)
+			q, err := NewQuery(tc.queryName, tc.path, tc.query, nil)
+			if err != nil {
+				t.Fatalf("NewQuery() error: %v", err)
+			}
 
 			if q.Path != tc.expectedPath {
 				t.Errorf("Path mismatch: got %s, expected %s", q.Path, tc.expectedPath)
@@ -386,7 +402,10 @@ func TestArgs(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			q := NewQuery(tc.name, "test.sql", tc.query, nil)
+			q, err := NewQuery(tc.name, "test.sql", tc.query, nil)
+			if err != nil {
+				t.Fatalf("NewQuery() error: %v", err)
+			}
 			args := q.Args
 
 			if !reflect.DeepEqual(args, tc.expectedArgs) {
@@ -465,7 +484,10 @@ func TestPositionalParameters(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			q := NewQuery(tc.name, "test.sql", tc.inputQuery, nil)
+			q, err := NewQuery(tc.name, "test.sql", tc.inputQuery, nil)
+			if err != nil {
+				t.Fatalf("NewQuery() error: %v", err)
+			}
 
 			if q.Raw != tc.expectedRaw {
 				t.Errorf("Raw: got %s, expected %s", q.Raw, tc.expectedRaw)
@@ -481,6 +503,182 @@ func TestPositionalParameters(t *testing.T) {
 
 			if !reflect.DeepEqual(q.NamedArgs, tc.expectedSQL) {
 				t.Errorf("NamedArgs: got %v, expected %v", q.NamedArgs, tc.expectedSQL)
+			}
+		})
+	}
+}
+
+func TestSqlcParameters(t *testing.T) {
+	testCases := []struct {
+		name         string
+		inputQuery   string
+		expectedRaw  string
+		expectedOrd  string
+		expectedArgs []string
+		expectedSQL  []sql.NamedArg
+	}{
+		{
+			name:        "Single sqlc parameter",
+			inputQuery:  "SELECT * FROM users WHERE id = @id",
+			expectedRaw: "SELECT * FROM users WHERE id = @id",
+			expectedOrd: "-- name: Single sqlc parameter\nSELECT * FROM users WHERE id = $1",
+			expectedArgs: []string{"id"},
+			expectedSQL: []sql.NamedArg{
+				sql.Named("id", nil),
+			},
+		},
+		{
+			name:        "Multiple sqlc parameters",
+			inputQuery:  "SELECT * FROM users WHERE id = @id AND name = @name",
+			expectedRaw: "SELECT * FROM users WHERE id = @id AND name = @name",
+			expectedOrd: "-- name: Multiple sqlc parameters\nSELECT * FROM users WHERE id = $1 AND name = $2",
+			expectedArgs: []string{"id", "name"},
+			expectedSQL: []sql.NamedArg{
+				sql.Named("id", nil),
+				sql.Named("name", nil),
+			},
+		},
+		{
+			name:        "Sqlc parameters with duplicates",
+			inputQuery:  "SELECT * FROM users WHERE id = @user_id AND backup_id = @user_id",
+			expectedRaw: "SELECT * FROM users WHERE id = @user_id AND backup_id = @user_id",
+			expectedOrd: "-- name: Sqlc parameters with duplicates\nSELECT * FROM users WHERE id = $1 AND backup_id = $1",
+			expectedArgs: []string{"user_id", "user_id"},
+			expectedSQL: []sql.NamedArg{
+				sql.Named("user_id", nil),
+			},
+		},
+		{
+			name:        "Sqlc parameters in INSERT",
+			inputQuery:  "INSERT INTO users (full_name, age) VALUES (@full_name, @age)",
+			expectedRaw: "INSERT INTO users (full_name, age) VALUES (@full_name, @age)",
+			expectedOrd: "-- name: Sqlc parameters in INSERT\nINSERT INTO users (full_name, age) VALUES ($1, $2)",
+			expectedArgs: []string{"full_name", "age"},
+			expectedSQL: []sql.NamedArg{
+				sql.Named("full_name", nil),
+				sql.Named("age", nil),
+			},
+		},
+		{
+			name:        "Sqlc parameters in UPDATE",
+			inputQuery:  "UPDATE users SET name = @name, email = @email WHERE id = @id",
+			expectedRaw: "UPDATE users SET name = @name, email = @email WHERE id = @id",
+			expectedOrd: "-- name: Sqlc parameters in UPDATE\nUPDATE users SET name = $1, email = $2 WHERE id = $3",
+			expectedArgs: []string{"name", "email", "id"},
+			expectedSQL: []sql.NamedArg{
+				sql.Named("name", nil),
+				sql.Named("email", nil),
+				sql.Named("id", nil),
+			},
+		},
+		{
+			name:        "Sqlc parameters with underscores",
+			inputQuery:  "SELECT * FROM orders WHERE user_id = @user_id AND order_date = @order_date",
+			expectedRaw: "SELECT * FROM orders WHERE user_id = @user_id AND order_date = @order_date",
+			expectedOrd: "-- name: Sqlc parameters with underscores\nSELECT * FROM orders WHERE user_id = $1 AND order_date = $2",
+			expectedArgs: []string{"user_id", "order_date"},
+			expectedSQL: []sql.NamedArg{
+				sql.Named("user_id", nil),
+				sql.Named("order_date", nil),
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			q, err := NewQuery(tc.name, "test.sql", tc.inputQuery, nil)
+			if err != nil {
+				t.Fatalf("NewQuery() error: %v", err)
+			}
+
+			if q.Raw != tc.expectedRaw {
+				t.Errorf("Raw: got %s, expected %s", q.Raw, tc.expectedRaw)
+			}
+
+			if q.OrdinalQuery != tc.expectedOrd {
+				t.Errorf("OrdinalQuery: got %s, expected %s", q.OrdinalQuery, tc.expectedOrd)
+			}
+
+			if !reflect.DeepEqual(q.Args, tc.expectedArgs) {
+				t.Errorf("Args: got %v, expected %v", q.Args, tc.expectedArgs)
+			}
+
+			if !reflect.DeepEqual(q.NamedArgs, tc.expectedSQL) {
+				t.Errorf("NamedArgs: got %v, expected %v", q.NamedArgs, tc.expectedSQL)
+			}
+		})
+	}
+}
+
+func TestMixedParameterStylesError(t *testing.T) {
+	testCases := []struct {
+		name          string
+		inputQuery    string
+		expectedError string
+	}{
+		{
+			name:          "Mixing positional and colon params",
+			inputQuery:    "SELECT * FROM users WHERE id = $1 AND name = :name",
+			expectedError: "mixed parameter styles detected in query",
+		},
+		{
+			name:          "Mixing positional and at-sign params",
+			inputQuery:    "SELECT * FROM users WHERE id = $1 AND name = @name",
+			expectedError: "mixed parameter styles detected in query",
+		},
+		{
+			name:          "Mixing colon and at-sign params",
+			inputQuery:    "SELECT * FROM users WHERE id = :id AND name = @name",
+			expectedError: "mixed parameter styles detected in query",
+		},
+		{
+			name:          "Mixing all three styles",
+			inputQuery:    "SELECT * FROM users WHERE id = $1 AND name = :name AND email = @email",
+			expectedError: "mixed parameter styles detected in query",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewQuery(tc.name, "test.sql", tc.inputQuery, nil)
+
+			if err == nil {
+				t.Errorf("Expected error for mixed parameter styles, but got nil")
+				return
+			}
+
+			if !strings.Contains(err.Error(), tc.expectedError) {
+				t.Errorf("Expected error to contain '%s', got: %v", tc.expectedError, err)
+			}
+		})
+	}
+}
+
+func TestSingleParameterStyleAllowed(t *testing.T) {
+	testCases := []struct {
+		name       string
+		inputQuery string
+	}{
+		{
+			name:       "Only positional params",
+			inputQuery: "SELECT * FROM users WHERE id = $1 AND name = $2",
+		},
+		{
+			name:       "Only colon params",
+			inputQuery: "SELECT * FROM users WHERE id = :id AND name = :name",
+		},
+		{
+			name:       "Only at-sign params",
+			inputQuery: "SELECT * FROM users WHERE id = @id AND name = @name",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewQuery(tc.name, "test.sql", tc.inputQuery, nil)
+
+			if err != nil {
+				t.Errorf("Expected no error for single parameter style, got: %v", err)
 			}
 		})
 	}

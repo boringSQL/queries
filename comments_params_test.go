@@ -104,7 +104,7 @@ SELECT * FROM users WHERE name = :name AND email = :email`,
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			q := NewQuery(tc.name, "test.sql", tc.query, nil)
+			q, _ := NewQuery(tc.name, "test.sql", tc.query, nil)
 
 			if !reflect.DeepEqual(q.Args, tc.expectedArgs) {
 				t.Errorf("Args: got %v, want %v", q.Args, tc.expectedArgs)
@@ -139,7 +139,7 @@ SELECT 42;`,
 		}
 
 		for i, query := range queries {
-			q := NewQuery("test", "test.sql", query, nil)
+			q, _ := NewQuery("test", "test.sql", query, nil)
 			if len(q.Args) != 0 {
 				t.Errorf("Query %d: expected no parameters, got %v", i, q.Args)
 			}
@@ -152,7 +152,7 @@ SELECT 42;`,
     ELSE cost IS NOT NULL
 END FROM products`
 
-		q := NewQuery("test", "test.sql", query, nil)
+		q, _ := NewQuery("test", "test.sql", query, nil)
 
 		expectedArgs := []string{"flag"}
 		if !reflect.DeepEqual(q.Args, expectedArgs) {
@@ -164,7 +164,7 @@ END FROM products`
 func TestEdgeCasesWithComments(t *testing.T) {
 	t.Run("String literals with parameter syntax", func(t *testing.T) {
 		query := `SELECT * FROM users WHERE name = ':not_a_param' AND id = :real_param`
-		q := NewQuery("test", "test.sql", query, nil)
+		q, _ := NewQuery("test", "test.sql", query, nil)
 
 		foundReal := false
 		for _, arg := range q.Args {
@@ -182,7 +182,7 @@ func TestEdgeCasesWithComments(t *testing.T) {
 		query := `-- $1
 SELECT * FROM users WHERE id = :user_id`
 
-		q := NewQuery("test", "test.sql", query, nil)
+		q, _ := NewQuery("test", "test.sql", query, nil)
 
 		expectedArgs := []string{"user_id"}
 		if !reflect.DeepEqual(q.Args, expectedArgs) {
@@ -194,7 +194,7 @@ SELECT * FROM users WHERE id = :user_id`
 		query := `-- $1 and :param
 SELECT * FROM users WHERE status = 'active'`
 
-		q := NewQuery("test", "test.sql", query, nil)
+		q, _ := NewQuery("test", "test.sql", query, nil)
 
 		if len(q.Args) != 0 {
 			t.Errorf("Expected no parameters, got: %v", q.Args)

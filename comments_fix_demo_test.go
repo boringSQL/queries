@@ -10,7 +10,7 @@ func TestCommentParameterHandling(t *testing.T) {
 -- $1 parameter
 SELECT 42;`
 
-		q := NewQuery("query1", "test.sql", query, nil)
+		q, _ := NewQuery("query1", "test.sql", query, nil)
 
 		if len(q.Args) != 0 {
 			t.Errorf("Expected no parameters, got: %v", q.Args)
@@ -21,7 +21,7 @@ SELECT 42;`
 		query := `-- :user_id and $1
 SELECT * FROM users WHERE id = :user_id;`
 
-		q := NewQuery("test", "test.sql", query, nil)
+		q, _ := NewQuery("test", "test.sql", query, nil)
 
 		if len(q.Args) != 1 || q.Args[0] != "user_id" {
 			t.Errorf("Expected [user_id], got: %v", q.Args)
@@ -34,7 +34,7 @@ SELECT product_id, price - COALESCE(cost, 0) as margin
 FROM products
 WHERE category = :category AND price > :min_price`
 
-		q := NewQuery("test", "test.sql", query, nil)
+		q, _ := NewQuery("test", "test.sql", query, nil)
 
 		expectedParams := map[string]bool{"category": true, "min_price": true}
 		if len(q.Args) != len(expectedParams) {

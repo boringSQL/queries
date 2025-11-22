@@ -25,7 +25,10 @@ WHERE
 ORDER BY product_id;`
 
 	t.Run("Detects include_unknown_cost variable", func(t *testing.T) {
-		q := NewQuery("test-query", "test.sql", testQuery, nil)
+		q, err := NewQuery("test-query", "test.sql", testQuery, nil)
+		if err != nil {
+			t.Fatalf("NewQuery() error: %v", err)
+		}
 
 		// Check that the variable was detected in Args
 		expectedArgs := []string{"include_unknown_cost"}
@@ -55,7 +58,10 @@ ORDER BY product_id;`
 	})
 
 	t.Run("Prepare method works with include_unknown_cost", func(t *testing.T) {
-		q := NewQuery("test-query", "test.sql", testQuery, nil)
+		q, err := NewQuery("test-query", "test.sql", testQuery, nil)
+		if err != nil {
+			t.Fatalf("NewQuery() error: %v", err)
+		}
 
 		testCases := []struct {
 			name     string
