@@ -31,14 +31,15 @@ type (
 	}
 
 	Query struct {
-		Name         string
-		Path         string
-		Raw          string
-		OrdinalQuery string
-		Mapping      map[string]int
-		Args         []string
-		NamedArgs    []sql.NamedArg
-		Metadata     map[string]string
+		Name           string
+		Path           string
+		Raw            string
+		OrdinalQuery   string
+		Mapping        map[string]int
+		Args           []string
+		NamedArgs      []sql.NamedArg
+		Metadata       map[string]string
+		parsedSections parsedSections // lazily parsed @tag sections
 	}
 )
 
