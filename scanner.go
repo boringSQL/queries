@@ -14,10 +14,11 @@ type ScannedQuery struct {
 }
 
 type Scanner struct {
-	line     string
-	queries  map[string]*ScannedQuery
-	current  string
-	metadata map[string]map[string]string
+	line            string
+	queries         map[string]*ScannedQuery
+	current         string
+	metadata        map[string]map[string]string
+	pendingMetadata map[string]string // metadata collected before query starts
 }
 
 type stateFn func(*Scanner) stateFn
@@ -47,16 +48,33 @@ func initialState(s *Scanner) stateFn {
 	// Check for name directive
 	if tag := getTag(s.line); len(tag) > 0 {
 		s.current = tag
+		s.applyPendingMetadata()
 		return queryState
 	}
 
-	// Skip empty lines and comment lines (including metadata) before first name directive
 	trimmed := strings.TrimSpace(s.line)
-	if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+
+	// Skip empty lines
+	if trimmed == "" {
+		return initialState
+	}
+
+	// Check for metadata before query starts
+	if key, value, ok := getMetadata(s.line); ok {
+		if s.pendingMetadata == nil {
+			s.pendingMetadata = make(map[string]string)
+		}
+		s.pendingMetadata[key] = value
+		return initialState
+	}
+
+	// Skip other comment lines (non-metadata comments)
+	if strings.HasPrefix(trimmed, "--") {
 		return initialState
 	}
 
 	// Found actual SQL code, use filename as query name and process this line
+	s.applyPendingMetadata()
 	s.appendQueryLine()
 	return queryState
 }
@@ -102,6 +120,13 @@ func (s *Scanner) appendMetadata(key, value string) {
 		}
 	}
 	s.queries[s.current].Metadata[key] = value
+}
+
+func (s *Scanner) applyPendingMetadata() {
+	for key, value := range s.pendingMetadata {
+		s.appendMetadata(key, value)
+	}
+	s.pendingMetadata = nil
 }
 
 func (s *Scanner) Run(fileName string, io *bufio.Scanner) map[string]*ScannedQuery {

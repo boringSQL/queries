@@ -103,6 +103,96 @@ SELECT 1;`,
 	}
 }
 
+func TestScannerMetadataWithoutNameDirective(t *testing.T) {
+	testCases := []struct {
+		name             string
+		fileName         string
+		content          string
+		expectedName     string
+		expectedQuery    string
+		expectedMetadata map[string]string
+	}{
+		{
+			name:     "Metadata before SQL without name directive",
+			fileName: "users.sql",
+			content: `-- description: Retrieve user by email efficiently
+-- max-cost: 100
+-- timeout: 50ms
+SELECT id, name, email FROM users WHERE email = :email`,
+			expectedName:  "users",
+			expectedQuery: "SELECT id, name, email FROM users WHERE email = :email",
+			expectedMetadata: map[string]string{
+				"description": "Retrieve user by email efficiently",
+				"max-cost":    "100",
+				"timeout":     "50ms",
+			},
+		},
+		{
+			name:     "Mixed comments and metadata without name directive",
+			fileName: "query.sql",
+			content: `-- This is a regular comment
+-- description: Test query
+-- Another comment
+-- author: test-team
+SELECT 1;`,
+			expectedName:  "query",
+			expectedQuery: "SELECT 1;",
+			expectedMetadata: map[string]string{
+				"description": "Test query",
+				"author":      "test-team",
+			},
+		},
+		{
+			name:     "Only metadata, no regular comments",
+			fileName: "simple.sql",
+			content: `-- version: 1.0
+SELECT * FROM items;`,
+			expectedName:  "simple",
+			expectedQuery: "SELECT * FROM items;",
+			expectedMetadata: map[string]string{
+				"version": "1.0",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			scanner := &Scanner{}
+			reader := strings.NewReader(tc.content)
+			bufScanner := bufio.NewScanner(reader)
+
+			queries := scanner.Run(tc.fileName, bufScanner)
+
+			if len(queries) != 1 {
+				t.Errorf("Expected 1 query, got %d", len(queries))
+				return
+			}
+
+			scannedQuery, ok := queries[tc.expectedName]
+			if !ok {
+				t.Errorf("Query '%s' not found. Available: %v", tc.expectedName, queries)
+				return
+			}
+
+			if scannedQuery.Query != tc.expectedQuery {
+				t.Errorf("Query mismatch:\ngot:  %q\nwant: %q", scannedQuery.Query, tc.expectedQuery)
+			}
+
+			for key, expectedValue := range tc.expectedMetadata {
+				if gotValue, ok := scannedQuery.Metadata[key]; !ok {
+					t.Errorf("Missing metadata key %q", key)
+				} else if gotValue != expectedValue {
+					t.Errorf("Metadata %q mismatch: got %q, want %q", key, gotValue, expectedValue)
+				}
+			}
+
+			if len(scannedQuery.Metadata) != len(tc.expectedMetadata) {
+				t.Errorf("Metadata count mismatch: got %d, want %d", len(scannedQuery.Metadata), len(tc.expectedMetadata))
+			}
+		})
+	}
+}
+
 func TestScannerDoesNotCreateEmptyQueries(t *testing.T) {
 	t.Run("Only comments", func(t *testing.T) {
 		content := `-- comment 1
