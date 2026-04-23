@@ -94,6 +94,29 @@ SELECT * FROM users WHERE id = :real_param  -- :another_fake is also ignored
 
 Named parameters are converted to positional notation: `:name` becomes `$1`, `:email` becomes `$2`, etc.
 
+### Query Tagging
+
+In addition to the `-- key: value` form, directives can be written as single-line block comments. This includes [Marginalia](https://github.com/basecamp/marginalia) and [sqlcommenter](https://google.github.io/sqlcommenter/spec/)-style comments, so queries authored or rewritten by those tools are parsed correctly.
+
+```sql
+/* name: get-user, author: team, version: 2 */
+SELECT * FROM users WHERE id = :id
+
+/* name='update-user',application='billing' */
+UPDATE users SET last_login_at = current_timestamp WHERE id = :id
+```
+
+Pairs are comma-separated. Values wrapped in single quotes are URL-decoded per the sqlcommenter spec; bare values are taken as-is. The `name` key sets the query name; everything else becomes metadata.
+
+Directives may appear before or after the SQL body. Trailing `name:` (dash, Marginalia, or sqlcommenter form) renames the query in single-query files — useful when a tool appends its tag comment after the query:
+
+```sql
+SELECT * FROM users WHERE id = :id
+/* name: get-user, author: team */
+```
+
+Limitation: trailing `name:` only works reliably in single-query files. In a multi-query file, all SQL up to the first `name:` directive is collected under that name, so a trailing `name:` at the end does not split out a preceding un-named block.
+
 ## Query Metadata
 
 You can add metadata to your queries using `-- key: value` format. Metadata provides a way to attach additional information to queries, such as descriptions, performance requirements, or custom tags.
