@@ -9,6 +9,64 @@ import (
 	"strings"
 )
 
+func StripLeadingComments(query string) string {
+	_, _, _, body := ExtractLeadingComments(query)
+	return body
+}
+
+func ExtractLeadingComments(query string) (name string, metadata map[string]string, freeform []string, body string) {
+	lines := strings.Split(query, "\n")
+	i := 0
+	for ; i < len(lines); i++ {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		if tag := getTag(line); tag != "" {
+			name = tag
+			continue
+		}
+		if d, ok := parseBlockDirective(line); ok {
+			if d.name != "" {
+				name = d.name
+			}
+			for k, v := range d.metadata {
+				if metadata == nil {
+					metadata = make(map[string]string)
+				}
+				metadata[k] = v
+			}
+			continue
+		}
+		if key, value, ok := getMetadata(line); ok {
+			if metadata == nil {
+				metadata = make(map[string]string)
+			}
+			metadata[key] = value
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "--") {
+			freeform = append(freeform, strings.TrimSpace(strings.TrimPrefix(trimmed, "--")))
+			continue
+		}
+		if blockCommentRE.MatchString(line) {
+			if m := blockInnerRE.FindStringSubmatch(line); m != nil {
+				freeform = append(freeform, m[1])
+			} else {
+				inner := strings.TrimSuffix(strings.TrimPrefix(trimmed, "/*"), "*/")
+				freeform = append(freeform, strings.TrimSpace(inner))
+			}
+			continue
+		}
+
+		break
+	}
+	return name, metadata, freeform, strings.Join(lines[i:], "\n")
+}
+
 type (
 	ScannedQuery struct {
 		Query    string

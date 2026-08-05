@@ -415,6 +415,24 @@ func TestArgs(t *testing.T) {
 	}
 }
 
+func TestPrepareRepeatedParam(t *testing.T) {
+	q, err := NewQuery("find", "test.sql",
+		"SELECT * FROM users WHERE id = :id OR backup_id = :id AND status = :status", nil)
+	if err != nil {
+		t.Fatalf("NewQuery() error: %v", err)
+	}
+
+	got := q.Prepare(map[string]interface{}{"id": 7, "status": "active"})
+	want := []interface{}{7, "active"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Prepare repeated param = %v, want %v (one value per unique name)", got, want)
+	}
+
+	if !strings.Contains(q.OrdinalQuery, "id = $1 OR backup_id = $1 AND status = $2") {
+		t.Fatalf("repeated :id did not reuse $1: %s", q.OrdinalQuery)
+	}
+}
+
 func TestPositionalParameters(t *testing.T) {
 	testCases := []struct {
 		name         string

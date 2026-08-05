@@ -94,6 +94,21 @@ SELECT * FROM users WHERE id = :real_param  -- :another_fake is also ignored
 
 Named parameters are converted to positional notation: `:name` becomes `$1`, `:email` becomes `$2`, etc.
 
+A named parameter may be used more than once in a query. Repeated names collapse
+to a single placeholder — `:id` in two places is `$1` in both — and `Prepare`
+takes its value **once**:
+
+```sql
+-- name: find-account
+SELECT * FROM accounts WHERE id = :id OR backup_id = :id
+```
+```go
+args := q.Prepare(map[string]any{"id": 123})
+```
+
+This keeps optional-filter and guard patterns ergonomic: a flag referenced in
+several clauses stays a single map key, not one entry per occurrence.
+
 ### Query Tagging
 
 In addition to the `-- key: value` form, directives can be written as single-line block comments. This includes [Marginalia](https://github.com/basecamp/marginalia) and [sqlcommenter](https://google.github.io/sqlcommenter/spec/)-style comments, so queries authored or rewritten by those tools are parsed correctly.
