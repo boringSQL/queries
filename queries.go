@@ -320,9 +320,19 @@ func handleNamedParams(q *Query, name, query, cleanQuery string) *Query {
 	}
 
 	// Replace named parameters with positional markers ($1, $2, etc.)
-	for paramName, ord := range mapping {
-		pattern := regexp.MustCompile(fmt.Sprintf(namedParamRE, paramName))
-		query = pattern.ReplaceAllLiteralString(query, fmt.Sprintf("$%d", ord))
+	paramNames := make([]string, 0, len(mapping))
+	for paramName := range mapping {
+		paramNames = append(paramNames, paramName)
+	}
+	sort.Slice(paramNames, func(i, j int) bool {
+		if len(paramNames[i]) != len(paramNames[j]) {
+			return len(paramNames[i]) > len(paramNames[j])
+		}
+		return paramNames[i] < paramNames[j]
+	})
+	for _, paramName := range paramNames {
+		pattern := regexp.MustCompile(fmt.Sprintf(namedParamRE, regexp.QuoteMeta(paramName)))
+		query = pattern.ReplaceAllLiteralString(query, fmt.Sprintf("$%d", mapping[paramName]))
 	}
 
 	q.OrdinalQuery = fmt.Sprintf("-- name: %s\n%s", name, query)
