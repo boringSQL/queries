@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -94,7 +95,7 @@ func (qs *QueryStore) LoadFromEmbed(sqlFS embed.FS, path string) error {
 		filePath := entry.Name()
 
 		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(filePath), ".sql") {
-			file, err := sqlFS.Open(filepath.Join(path, filePath))
+			file, err := sqlFS.Open(pathpkg.Join(path, filePath))
 			if err != nil {
 				return fmt.Errorf("Error opening SQL file '%s': %v", filePath, err)
 			}
